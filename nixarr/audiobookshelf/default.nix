@@ -185,6 +185,7 @@ in
           Restart = "on-failure";
 
           # Security
+          Environment = "BASE_URL=/audiobookshelf";
           ProtectHome = true;
           PrivateTmp = true;
           PrivateDevices = true;
