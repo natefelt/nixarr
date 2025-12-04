@@ -4,12 +4,14 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.nixarr.audiobookshelf;
   globals = config.util-nixarr.globals;
   port = 9292;
   nixarr = config.nixarr;
-in {
+in
+{
   options.nixarr.audiobookshelf = {
     enable = mkOption {
       type = types.bool;
@@ -22,7 +24,7 @@ in {
       '';
     };
 
-    package = mkPackageOption pkgs "audiobookshelf" {};
+    package = mkPackageOption pkgs "audiobookshelf" { };
 
     stateDir = mkOption {
       type = types.path;
@@ -115,12 +117,10 @@ in {
     };
   };
 
-  config = let
-    host =
-      if cfg.vpn.enable
-      then "192.168.15.1"
-      else "127.0.0.1";
-  in
+  config =
+    let
+      host = if cfg.vpn.enable then "192.168.15.1" else "0.0.0.0";
+    in
     mkIf (nixarr.enable && cfg.enable) {
       assertions = [
         {
@@ -140,10 +140,7 @@ in {
         {
           assertion =
             cfg.expose.https.enable
-            -> (
-              (cfg.expose.https.domainName != null)
-              && (cfg.expose.https.acmeMail != null)
-            );
+            -> ((cfg.expose.https.domainName != null) && (cfg.expose.https.acmeMail != null));
           message = ''
             The nixarr.audiobookshelf.expose.https.enable option requires the
             following options to be set, but one of them were not:
@@ -174,8 +171,8 @@ in {
       systemd.services.audiobookshelf = {
         description = "Audiobookshelf is a self-hosted audiobook and podcast server";
 
-        after = ["network.target"];
-        wantedBy = ["multi-user.target"];
+        after = [ "network.target" ];
+        wantedBy = [ "multi-user.target" ];
 
         serviceConfig = {
           IOSchedulingPriority = 0;
@@ -203,17 +200,23 @@ in {
           RemoveIPC = true;
           PrivateMounts = true;
           ProtectSystem = "strict";
-          ReadWritePaths = [cfg.stateDir];
+          ReadWritePaths = [ cfg.stateDir ];
         };
       };
 
       networking.firewall = mkIf cfg.expose.https.enable {
-        allowedTCPPorts = [80 443];
+        allowedTCPPorts = [
+          80
+          443
+        ];
       };
 
       util-nixarr.upnp = mkIf cfg.expose.https.upnp.enable {
         enable = true;
-        openTcpPorts = [80 443];
+        openTcpPorts = [
+          80
+          443
+        ];
       };
 
       services.nginx = mkMerge [
@@ -225,7 +228,7 @@ in {
           recommendedGzipSettings = true;
         })
         (mkIf cfg.expose.https.enable {
-          virtualHosts."${builtins.replaceStrings ["\n"] [""] cfg.expose.https.domainName}" = {
+          virtualHosts."${builtins.replaceStrings [ "\n" ] [ "" ] cfg.expose.https.domainName}" = {
             enableACME = true;
             forceSSL = true;
             locations."/" = {
