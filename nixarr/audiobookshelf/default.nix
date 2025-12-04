@@ -119,7 +119,7 @@ in
 
   config =
     let
-      host = if cfg.vpn.enable then "192.168.15.1" else "0.0.0.0";
+      host = if cfg.vpn.enable then "192.168.15.1" else "127.0.0.1";
     in
     mkIf (nixarr.enable && cfg.enable) {
       assertions = [
@@ -204,12 +204,17 @@ in
         };
       };
 
-      networking.firewall = mkIf cfg.expose.https.enable {
-        allowedTCPPorts = [
-          80
-          443
-        ];
-      };
+      networking.firewall = mkMerge [
+        (mkIf cfg.expose.https.enable {
+          allowedTCPPorts = [
+            80
+            443
+          ];
+        })
+        (mkIf cfg.openFirewall {
+          allowedTCPPorts = [ cfg.port ];
+        })
+      ];
 
       util-nixarr.upnp = mkIf cfg.expose.https.upnp.enable {
         enable = true;
