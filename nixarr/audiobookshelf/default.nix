@@ -119,7 +119,7 @@ in
 
   config =
     let
-      host = if cfg.vpn.enable then "192.168.15.1" else "127.0.0.1";
+      host = if cfg.vpn.enable then "192.168.15.1" else "0.0.0.0";
     in
     mkIf (nixarr.enable && cfg.enable) {
       assertions = [
