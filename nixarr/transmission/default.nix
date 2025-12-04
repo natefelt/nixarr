@@ -4,29 +4,31 @@
   pkgs,
   ...
 }:
-with lib; let
+with lib;
+let
   cfg = config.nixarr.transmission;
   globals = config.util-nixarr.globals;
   nixarr = config.nixarr;
 
   cfg-cross-seed = config.nixarr.transmission.privateTrackers.cross-seed;
-  downloadDir = "${nixarr.mediaDir}/torrents";
-  transmissionCrossSeedScript = with builtins;
+  transmissionCrossSeedScript =
+    with builtins;
     pkgs.writeShellApplication {
       name = "transmission-cross-seed-script";
 
-      runtimeInputs = with pkgs; [curl];
+      runtimeInputs = with pkgs; [ curl ];
 
       text = ''
         PROWLARR_API_KEY=$(cat ${cfg.stateDir}/prowlarr-api-key)
         curl -XPOST http://localhost:2468/api/webhook?apikey="$PROWLARR_API_KEY" --data-urlencode "infoHash=$TR_TORRENT_HASH"
       '';
     };
-  importProwlarrApi = with builtins;
+  importProwlarrApi =
+    with builtins;
     pkgs.writeShellApplication {
       name = "import-prowlarr-api";
 
-      runtimeInputs = with pkgs; [yq];
+      runtimeInputs = with pkgs; [ yq ];
 
       text = ''
         while [ ! -f "${nixarr.prowlarr.stateDir}/config.xml" ]; do
@@ -40,11 +42,15 @@ with lib; let
         xq -r '.Config.ApiKey' "${nixarr.prowlarr.stateDir}/config.xml" > "${cfg.stateDir}/prowlarr-api-key"
       '';
     };
-  mkCrossSeedCredentials = with builtins;
+  mkCrossSeedCredentials =
+    with builtins;
     pkgs.writeShellApplication {
       name = "mk-cross-seed-credentials";
 
-      runtimeInputs = with pkgs; [jq yq];
+      runtimeInputs = with pkgs; [
+        jq
+        yq
+      ];
 
       text =
         "INDEX_LINKS=("
@@ -76,7 +82,8 @@ with lib; let
           done
         '';
     };
-in {
+in
+{
   options.nixarr.transmission = {
     enable = mkOption {
       type = types.bool;
@@ -87,7 +94,26 @@ in {
       '';
     };
 
-    package = mkPackageOption pkgs "transmission_4" {};
+    package = mkPackageOption pkgs "transmission_4" { };
+
+    downloadDir = mkOption {
+      type = types.path;
+      default = "${nixarr.mediaDir}/torrents";
+      defaultText = literalExpression ''"''${nixarr.mediaDir}/torrents"'';
+      example = "/media/torrents";
+      description = ''
+        The location of the download directory for the Transmission service.
+
+        > **Warning:** Setting this to any path, where the subpath is not
+        > owned by root, will fail! For example:
+        >
+        > ```nix
+        >   stateDir = /home/user/nixarr/.state/transmission
+        > ```
+        >
+        > Is not supported, because `/home/user` is owned by `user`.
+      '';
+    };
 
     stateDir = mkOption {
       type = types.path;
@@ -118,8 +144,8 @@ in {
 
     extraAllowedIps = mkOption {
       type = with types; listOf str;
-      default = [];
-      example = ["10.19.5.10"];
+      default = [ ];
+      example = [ "10.19.5.10" ];
       description = ''
         Extra IP addresses allowed to access the Transmission RPC. By default
         `192.168.*` and `127.0.0.1` (localhost) are allowed, but if your
@@ -189,8 +215,12 @@ in {
 
         indexIds = mkOption {
           type = with types; listOf int;
-          default = [];
-          example = [1 3 7];
+          default = [ ];
+          example = [
+            1
+            3
+            7
+          ];
           description = ''
             List of indexer-ids, from prowlarr. These are from the RSS links
             for the indexers, located by the "radio" or "RSS" logo on the
@@ -204,7 +234,7 @@ in {
 
         extraSettings = mkOption {
           type = types.attrs;
-          default = {};
+          default = { };
           example = {
             port = 3000;
             delay = 20;
@@ -260,7 +290,7 @@ in {
 
     extraSettings = mkOption {
       type = types.attrs;
-      default = {};
+      default = { };
       example = {
         trash-original-torrent-files = true;
       };
@@ -327,39 +357,34 @@ in {
       dataDir = cfg-cross-seed.stateDir;
       user = globals.cross-seed.user;
       group = globals.cross-seed.group;
-      settings =
-        {
-          torrentDir = "${cfg.stateDir}/.config/transmission-daemon/torrents";
-          outputDir = "${nixarr.mediaDir}/torrents/.cross-seed";
-          transmissionRpcUrl = "http://localhost:${builtins.toString cfg.uiPort}/transmission/rpc";
-          rssCadence = "20 minutes";
+      settings = {
+        torrentDir = "${cfg.stateDir}/.config/transmission-daemon/torrents";
+        outputDir = "${nixarr.mediaDir}/torrents/.cross-seed";
+        transmissionRpcUrl = "http://localhost:${builtins.toString cfg.uiPort}/transmission/rpc";
+        rssCadence = "20 minutes";
 
-          action = "inject";
+        action = "inject";
 
-          # Enable infrequent periodic searches
-          searchCadence = "1 week";
-          excludeRecentSearch = "1 year";
-          excludeOlder = "1 year";
-        }
-        // cfg-cross-seed.extraSettings;
+        # Enable infrequent periodic searches
+        searchCadence = "1 week";
+        excludeRecentSearch = "1 year";
+        excludeOlder = "1 year";
+      }
+      // cfg-cross-seed.extraSettings;
     };
     # Run as root in case that the cfg.credentialsFile is not readable by cross-seed
     systemd.services.cross-seed.serviceConfig = mkIf cfg-cross-seed.enable {
       ExecStartPre = mkBefore [
-        (
-          "+" + "${mkCrossSeedCredentials}/bin/mk-cross-seed-credentials"
-        )
+        ("+" + "${mkCrossSeedCredentials}/bin/mk-cross-seed-credentials")
       ];
     };
 
     systemd.services.transmission.serviceConfig = {
       # Always prioritize all other services wrt. IO
       IOSchedulingPriority = 7;
-      ExecStartPre = mkIf cfg-cross-seed.enable (
-        mkBefore [
-          ("+" + "${importProwlarrApi}/bin/import-prowlarr-api")
-        ]
-      );
+      ExecStartPre = mkIf cfg-cross-seed.enable (mkBefore [
+        ("+" + "${importProwlarrApi}/bin/import-prowlarr-api")
+      ]);
     };
 
     services.transmission = {
@@ -367,74 +392,71 @@ in {
       user = globals.transmission.user;
       group = globals.transmission.group;
       home = cfg.stateDir;
-      webHome =
-        if cfg.flood.enable
-        then pkgs.flood-for-transmission
-        else null;
+      webHome = if cfg.flood.enable then pkgs.flood-for-transmission else null;
       package = cfg.package;
       openFirewall = cfg.openFirewall;
       openRPCPort = cfg.openFirewall;
       openPeerPorts = cfg.openFirewall;
       credentialsFile = cfg.credentialsFile;
-      settings =
-        {
-          download-dir = downloadDir;
-          incomplete-dir-enabled = true;
-          incomplete-dir = "${downloadDir}/.incomplete";
-          watch-dir-enabled = true;
-          watch-dir = "${downloadDir}/.watch";
+      settings = {
+        download-dir = cfg.downloadDir;
+        incomplete-dir-enabled = true;
+        incomplete-dir = "${cfg.downloadDir}/.incomplete";
+        watch-dir-enabled = true;
+        watch-dir = "${cfg.downloadDir}/.watch";
 
-          umask = "002";
+        umask = "002";
 
-          rpc-bind-address =
-            if cfg.vpn.enable
-            then "192.168.15.1"
-            else "0.0.0.0";
-          rpc-port = cfg.uiPort;
-          rpc-whitelist-enabled = true;
-          rpc-whitelist = strings.concatStringsSep "," ([
-              "127.0.0.1,192.168.*,10.*" # Defaults
-            ]
-            ++ cfg.extraAllowedIps);
-          rpc-authentication-required = false;
+        rpc-bind-address = if cfg.vpn.enable then "192.168.15.1" else "0.0.0.0";
+        rpc-port = cfg.uiPort;
+        rpc-whitelist-enabled = true;
+        rpc-whitelist = strings.concatStringsSep "," (
+          [
+            "127.0.0.1,192.168.*,10.*" # Defaults
+          ]
+          ++ cfg.extraAllowedIps
+        );
+        rpc-authentication-required = false;
 
-          blocklist-enabled = true;
-          blocklist-url = "https://github.com/Naunter/BT_BlockLists/raw/master/bt_blocklists.gz";
+        blocklist-enabled = true;
+        blocklist-url = "https://github.com/Naunter/BT_BlockLists/raw/master/bt_blocklists.gz";
 
-          peer-port = cfg.peerPort;
-          dht-enabled = !cfg.privateTrackers.disableDhtPex;
-          pex-enabled = !cfg.privateTrackers.disableDhtPex;
-          utp-enabled = false;
-          encryption = 1;
-          port-forwarding-enabled = false;
+        peer-port = cfg.peerPort;
+        dht-enabled = !cfg.privateTrackers.disableDhtPex;
+        pex-enabled = !cfg.privateTrackers.disableDhtPex;
+        utp-enabled = false;
+        encryption = 1;
+        port-forwarding-enabled = false;
 
-          anti-brute-force-enabled = true;
-          anti-brute-force-threshold = 10;
+        anti-brute-force-enabled = true;
+        anti-brute-force-threshold = 10;
 
-          script-torrent-done-enabled = cfg-cross-seed.enable;
-          script-torrent-done-filename =
-            if cfg-cross-seed.enable
-            then "${transmissionCrossSeedScript}/bin/transmission-cross-seed-script"
-            else null;
+        script-torrent-done-enabled = cfg-cross-seed.enable;
+        script-torrent-done-filename =
+          if cfg-cross-seed.enable then
+            "${transmissionCrossSeedScript}/bin/transmission-cross-seed-script"
+          else
+            null;
 
-          message-level =
-            if cfg.messageLevel == "none"
-            then 0
-            else if cfg.messageLevel == "critical"
-            then 1
-            else if cfg.messageLevel == "error"
-            then 2
-            else if cfg.messageLevel == "warn"
-            then 3
-            else if cfg.messageLevel == "info"
-            then 4
-            else if cfg.messageLevel == "debug"
-            then 5
-            else if cfg.messageLevel == "trace"
-            then 6
-            else null;
-        }
-        // cfg.extraSettings;
+        message-level =
+          if cfg.messageLevel == "none" then
+            0
+          else if cfg.messageLevel == "critical" then
+            1
+          else if cfg.messageLevel == "error" then
+            2
+          else if cfg.messageLevel == "warn" then
+            3
+          else if cfg.messageLevel == "info" then
+            4
+          else if cfg.messageLevel == "debug" then
+            5
+          else if cfg.messageLevel == "trace" then
+            6
+          else
+            null;
+      }
+      // cfg.extraSettings;
     };
 
     # Enable and specify VPN namespace to confine service in.
